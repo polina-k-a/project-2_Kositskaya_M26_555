@@ -10,7 +10,10 @@ wheels/
 
 # Virtual environments
 .venv
+.venv-test
 
 # Database files
 db_meta.json
 data/
+
+*.cast

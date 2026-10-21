@@ -2,6 +2,7 @@
 
 import re
 import shlex
+from pathlib import Path
 
 import prompt
 from prettytable import PrettyTable
@@ -19,6 +20,7 @@ from primitive_db.core import (
     select,
     update,
 )
+from primitive_db.decorators import FILE_NOT_FOUND_ERR
 from primitive_db.utils import (
     load_metadata,
     load_table_data,
@@ -56,7 +58,12 @@ def print_help() -> None:
 def run() -> None:
     print_help()
     while True:
-        metadata = load_metadata(FILE_PATH)
+        metadata, status = load_metadata(FILE_PATH)
+        if status == FILE_NOT_FOUND_ERR:
+            metadata = {}
+        elif status != OK:
+            print("Не удалось загрузить метаданные.")
+            return
         user_input = prompt.string("\n>>>Введите команду: ").strip()
 
         try:
@@ -116,7 +123,9 @@ def handle_create_table(
         return
     metadata, status = create_table(metadata, args[1], args[2:])
     if status == OK:
-        save_metadata(FILE_PATH, metadata)
+        _, status = save_metadata(FILE_PATH, metadata)
+        if status != OK:
+            print("Не удалось сохранить метаданные.")
 
 
 def handle_list_tables(
@@ -139,8 +148,19 @@ def handle_drop_table(
         print(f"Некорректное значение: {user_input}. Попробуйте снова.")
         return
     metadata, status = drop_table(metadata, args[1])
-    if status == OK:
-        save_metadata(FILE_PATH, metadata)
+    if status != OK:
+        return
+    _, status = save_metadata(FILE_PATH, metadata)
+    if status != OK:
+        print("Не удалось сохранить метаданные.")
+        return
+    table_file = Path("data") / f"{args[1]}.json"
+    try:
+        table_file.unlink(missing_ok=True)
+    except OSError as error:
+        print(f"Не удалось удалить файл таблицы: {error}")
+        return
+    print(f'Таблица "{args[1]}" успешно удалена.')
 
 
 def handle_insert(
@@ -166,12 +186,20 @@ def handle_insert(
         print(f"Некорректное значение: {user_input}. Попробуйте снова.")
         return
 
-    table_data = load_table_data(table_name)
+    table_data, status = load_table_data(table_name)
+    if status == FILE_NOT_FOUND_ERR:
+        table_data = []
+    elif status != OK:
+        print(f'Файл с данными таблицы "{table_name}" повреждён')
+        return
 
     updated_data, status = insert(metadata, table_name, table_data, values)
 
     if status == OK and updated_data is not None:
-        save_table_data(table_name, updated_data)
+        _, status = save_table_data(table_name, updated_data)
+        if status != OK:
+            print("Не удалось сохранить данные таблицы.")
+            return
 
 
 def handle_select(
@@ -205,7 +233,12 @@ def handle_select(
             print(f"Некорректное значение: {user_input}. Попробуйте снова.")
             return
 
-    table_data = load_table_data(table_name)
+    table_data, status = load_table_data(table_name)
+    if status == FILE_NOT_FOUND_ERR:
+        table_data = []
+    elif status != OK:
+        print(f'Файл с данными таблицы "{table_name}" повреждён')
+        return
     selected_data, status = select(table_data, where_clause)
 
     if status != OK:
@@ -261,7 +294,12 @@ def handle_update(
         print(f"Некорректное значение: {user_input}. Попробуйте снова.")
         return
 
-    table_data = load_table_data(table_name)
+    table_data, status = load_table_data(table_name)
+    if status == FILE_NOT_FOUND_ERR:
+        table_data = []
+    elif status != OK:
+        print(f'Файл с данными таблицы "{table_name}" повреждён')
+        return
 
     updated_ids = [
         row["ID"]
@@ -274,7 +312,10 @@ def handle_update(
     if status != OK:
         return
 
-    save_table_data(table_name, updated_data)
+    _, status = save_table_data(table_name, updated_data)
+    if status != OK:
+        print("Не удалось сохранить данные таблицы.")
+        return
 
     for record_id in updated_ids:
         print(f'Запись с ID={record_id} в таблице "{table_name}" успешно обновлена.')
@@ -311,7 +352,12 @@ def handle_delete(
             print(f"Некорректное значение: {user_input}. Попробуйте снова.")
             return
 
-    table_data = load_table_data(table_name)
+    table_data, status = load_table_data(table_name)
+    if status == FILE_NOT_FOUND_ERR:
+        table_data = []
+    elif status != OK:
+        print(f'Файл с данными таблицы "{table_name}" повреждён')
+        return
 
     deleted_ids = [
         row["ID"]
@@ -324,7 +370,10 @@ def handle_delete(
     if status != OK:
         return
 
-    save_table_data(table_name, deleted_data)
+    _, status = save_table_data(table_name, deleted_data)
+    if status != OK:
+        print("Не удалось сохранить данные таблицы.")
+        return
 
     if where_clause is None:
         print(f'Данные таблицы "{table_name}" успешно удалены.')
@@ -343,7 +392,15 @@ def handle_info(
         return
 
     table_name = args[1]
-    table_data = load_table_data(table_name)
+    if table_name not in metadata:
+        print(f'Ошибка: Таблица "{table_name}" не существует.')
+        return
+    table_data, status = load_table_data(table_name)
+    if status == FILE_NOT_FOUND_ERR:
+        table_data = []
+    elif status != OK:
+        print(f'Файл с данными таблицы "{table_name}" повреждён')
+        return
     info(metadata, table_name, table_data)
 
 

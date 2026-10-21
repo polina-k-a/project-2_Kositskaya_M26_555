@@ -1,6 +1,14 @@
 """Основная логика работы с таблицами и данными"""
 
+import json
 import re
+
+from primitive_db.decorators import (
+    confirm_action,
+    create_cacher,
+    handle_db_errors,
+    log_time,
+)
 
 ALLOWED_TYPES = {"int", "str", "bool"}
 TYPE_CONVERTERS = {
@@ -25,8 +33,13 @@ INVALID_VALUES_COUNT_ERR = 9
 INVALID_CONDITION_ERR = 10
 ID_UPDATE_ERR = 11
 RECORD_NOT_FOUND_ERR = 12
+# Файл не найден
+FILE_NOT_FOUND_ERR = 13
+
+cache_result, clear_cache = create_cacher()
 
 
+@handle_db_errors
 def create_table(
     metadata: dict[str, dict[str, str]], table_name: str, columns: list[str]
 ) -> tuple[dict[str, dict[str, str]], int]:
@@ -80,6 +93,8 @@ def create_table(
     return metadata, OK
 
 
+@handle_db_errors
+@confirm_action("удаление таблицы")
 def drop_table(
     metadata: dict[str, dict[str, str]], table_name: str
 ) -> tuple[dict[str, dict[str, str]], int]:
@@ -93,7 +108,7 @@ def drop_table(
         print(f'Ошибка: Таблица "{table_name}" не существует.')
         return metadata, TABLE_NOT_FOUND_ERR
     del metadata[table_name]
-    print(f'Таблица "{table_name}" успешно удалена.')
+    clear_cache()
     return metadata, OK
 
 
@@ -109,6 +124,8 @@ def list_tables(metadata: dict[str, dict[str, str]]) -> None:
         print(f"- {table_name}")
 
 
+@handle_db_errors
+@log_time
 def insert(
     metadata: dict[str, dict[str, str]],
     table_name: str,
@@ -169,27 +186,39 @@ def insert(
             )
         }
     )
+    clear_cache()
     print(f'Запись с ID={new_id} успешно добавлена в таблицу "{table_name}".')
     return table_data, OK
 
 
+@handle_db_errors
+@log_time
 def select(
     table_data: list[dict[str, str | int | bool]],
     where_clause: dict[str, str | int | bool] | None = None,
 ) -> tuple[list[dict[str, str | int | bool]], int]:
     """
     Функция получения данных таблицы с фильтром.
-    Если where_clause не задан, возвращает все данные.
-    Если задан (например, {'age': 28}), фильтрует и возвращает только подходящие записи.
+    Кэширует результаты одинаковых запросов.
     """
-    if where_clause is None:
-        selected_data = table_data
-    else:
-        selected_data = [
-            row
+
+    def get_selected_data() -> list[dict[str, str | int | bool]]:
+        if where_clause is None:
+            return [row.copy() for row in table_data]
+
+        return [
+            row.copy()
             for row in table_data
             if all(row.get(c) == v for c, v in where_clause.items())
         ]
+
+    key = json.dumps(
+        {"data": table_data, "where": where_clause},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+    selected_data = cache_result(key, get_selected_data)
 
     if not selected_data:
         print("Подходящие записи не найдены.")
@@ -198,6 +227,7 @@ def select(
     return selected_data, OK
 
 
+@handle_db_errors
 def update(
     table_data: list[dict[str, str | int | bool]],
     set_clause: dict[str, str | int | bool],
@@ -220,9 +250,12 @@ def update(
     if not found:
         print("Записи, соответствующие условию, не найдены.")
         return updated_data, RECORD_NOT_FOUND_ERR
+    clear_cache()
     return updated_data, OK
 
 
+@handle_db_errors
+@confirm_action("удаление записей")
 def delete(
     table_data: list[dict[str, str | int | bool]],
     where_clause: dict[str, str | int | bool] | None = None,
@@ -232,6 +265,7 @@ def delete(
     Возвращает измененные данные.
     """
     if where_clause is None:
+        clear_cache()
         return [], OK
     found = False
     updated_data = []
@@ -243,6 +277,7 @@ def delete(
     if not found:
         print("Записи, соответствующие условию, не найдены.")
         return updated_data, RECORD_NOT_FOUND_ERR
+    clear_cache()
     return updated_data, OK
 
 

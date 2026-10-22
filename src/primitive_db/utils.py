@@ -1,8 +1,8 @@
 import json
+from pathlib import Path
 
+from primitive_db.constants import OK
 from primitive_db.decorators import handle_db_errors
-
-OK = 0
 
 
 @handle_db_errors
@@ -51,4 +51,12 @@ def save_table_data(
     with open(f"data/{table_name}.json", "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False)
 
+    return None, OK
+
+
+@handle_db_errors
+def delete_table_file(table_name: str) -> tuple[None, int]:
+    """Удаляет JSON-файл таблицы, если он существует."""
+    table_file = Path("data") / f"{table_name}.json"
+    table_file.unlink(missing_ok=True)
     return None, OK

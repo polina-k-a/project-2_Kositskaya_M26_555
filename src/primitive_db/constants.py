@@ -1,0 +1,22 @@
+OK = 0
+# Ошибки управления таблицами
+DATABASE_ERR = 1
+TABLE_EXISTS_ERR = 2
+TABLE_NOT_FOUND_ERR = 3
+# Ошибки структуры таблицы
+INVALID_TABLE_NAME_ERR = 4
+INVALID_COLUMN_ERR = 5
+DUPLICATE_COLUMN_ERR = 6
+# Ошибки значений
+INVALID_VALUE_ERR = 7
+INVALID_TYPE_ERR = 8
+INVALID_VALUES_COUNT_ERR = 9
+# Ошибки условий и операций
+INVALID_CONDITION_ERR = 10
+ID_UPDATE_ERR = 11
+RECORD_NOT_FOUND_ERR = 12
+# Файл не найден
+FILE_NOT_FOUND_ERR = 13
+
+
+FILE_PATH = "db_meta.json"

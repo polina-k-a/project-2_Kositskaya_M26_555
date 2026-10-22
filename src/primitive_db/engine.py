@@ -2,15 +2,16 @@
 
 import re
 import shlex
-from pathlib import Path
 
 import prompt
 from prettytable import PrettyTable
 
-from primitive_db.core import (
-    INVALID_CONDITION_ERR,
-    INVALID_VALUE_ERR,
+from primitive_db.constants import (
+    FILE_NOT_FOUND_ERR,
+    FILE_PATH,
     OK,
+)
+from primitive_db.core import (
     create_table,
     delete,
     drop_table,
@@ -20,15 +21,17 @@ from primitive_db.core import (
     select,
     update,
 )
-from primitive_db.decorators import FILE_NOT_FOUND_ERR
+from primitive_db.parser import (
+    parse_insert_values,
+    parse_where_clause,
+)
 from primitive_db.utils import (
+    delete_table_file,
     load_metadata,
     load_table_data,
     save_metadata,
     save_table_data,
 )
-
-FILE_PATH = "db_meta.json"
 
 
 def print_help() -> None:
@@ -154,12 +157,11 @@ def handle_drop_table(
     if status != OK:
         print("Не удалось сохранить метаданные.")
         return
-    table_file = Path("data") / f"{args[1]}.json"
-    try:
-        table_file.unlink(missing_ok=True)
-    except OSError as error:
-        print(f"Не удалось удалить файл таблицы: {error}")
+    _, status = delete_table_file(args[1])
+    if status != OK:
+        print("Не удалось удалить файл таблицы.")
         return
+
     print(f'Таблица "{args[1]}" успешно удалена.')
 
 
@@ -409,85 +411,3 @@ def handle_help(args: list[str], user_input: str) -> None:
         print(f"Некорректное значение: {user_input}. Попробуйте снова.")
         return
     print_help()
-
-
-def parse_insert_values(raw_values: str) -> tuple[list[str] | None, int]:
-    """Разбирает значения в скобках и проверяет корректность их записи."""
-    raw_values = raw_values.strip()
-
-    if raw_values == "" or raw_values[0] != "(" or raw_values[-1] != ")":
-        return None, INVALID_VALUE_ERR
-
-    content = raw_values[1:-1]
-    values: list[str] = []
-    current = ""
-    in_quotes = False
-
-    for char in content:
-        if char == '"':
-            in_quotes = not in_quotes
-            current += char
-        elif char == "," and not in_quotes:
-            values.append(current.strip())
-            current = ""
-        else:
-            current += char
-
-    if in_quotes:
-        return None, INVALID_VALUE_ERR
-
-    values.append(current.strip())
-
-    if any(not value for value in values):
-        return None, INVALID_VALUE_ERR
-
-    for value in values:
-        if '"' in value:
-            if value.count('"') != 2 or value[0] != '"' or value[-1] != '"':
-                return None, INVALID_VALUE_ERR
-
-    return values, OK
-
-
-def parse_where_clause(
-    raw_clause: str,
-    table_columns: dict[str, str],
-) -> tuple[dict[str, str | int | bool] | None, int]:
-    """Проверяет условие WHERE и преобразует значение к типу столбца."""
-    parts = raw_clause.split("=", maxsplit=1)
-
-    if len(parts) != 2:
-        return None, INVALID_CONDITION_ERR
-
-    column = parts[0].strip()
-    value = parts[1].strip()
-
-    if column not in table_columns:
-        return None, INVALID_CONDITION_ERR
-
-    expected_type = table_columns[column]
-
-    if expected_type == "int":
-        if not value.lstrip("-").isdigit():
-            return None, INVALID_CONDITION_ERR
-        converted_value = int(value)
-
-    elif expected_type == "bool":
-        if value.lower() not in {"true", "false"}:
-            return None, INVALID_CONDITION_ERR
-        converted_value = value.lower() == "true"
-
-    elif expected_type == "str":
-        if (
-            len(value) < 2
-            or value[0] != '"'
-            or value[-1] != '"'
-            or value.count('"') != 2
-        ):
-            return None, INVALID_CONDITION_ERR
-        converted_value = value[1:-1]
-
-    else:
-        return None, INVALID_CONDITION_ERR
-
-    return {column: converted_value}, OK

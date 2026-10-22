@@ -4,8 +4,10 @@ import time
 from functools import wraps
 from typing import Any, Callable
 
-DATABASE_ERR = 1
-FILE_NOT_FOUND_ERR = 13
+from primitive_db.constants import (
+    DATABASE_ERR,
+    FILE_NOT_FOUND_ERR,
+)
 
 
 def handle_db_errors(func: Callable[..., Any]) -> Callable[..., Any]:
